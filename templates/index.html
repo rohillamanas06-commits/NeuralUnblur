@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deblur</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f6f1e6; --surface:#fffdf8; --ink:#25221c; --muted:#8a8272;
+    --line:#e7dfcd; --sage:#6d8462; --bad:#a24a3a;
+  }
+  *{box-sizing:border-box;margin:0}
+  html{background:var(--bg)}
+  body{
+    font-family:"Hanken Grotesk",system-ui,-apple-system,"Segoe UI",sans-serif;
+    color:var(--ink); line-height:1.5; min-height:100vh;
+    padding:0 clamp(16px,4vw,40px) 64px;
+  }
+  .wrap{max-width:880px;margin:0 auto}
+  header{display:flex;justify-content:space-between;align-items:center;padding:28px 0 0}
+  .logo{font-weight:700;font-size:19px;letter-spacing:-.03em}
+  .side{display:flex;align-items:center;gap:16px;font-size:13px;color:var(--muted)}
+  .status{display:flex;align-items:center;gap:8px}
+  .dot{width:8px;height:8px;border-radius:50%;background:#c9c0ab}
+  .status[data-s="ok"] .dot{background:var(--sage)}
+  .status[data-s="warn"] .dot{background:#c79a45}
+  .status[data-s="off"] .dot{background:var(--bad)}
+  details.srv{position:relative}
+  details.srv summary{cursor:pointer;list-style:none;color:var(--muted)}
+  details.srv summary::-webkit-details-marker{display:none}
+  details.srv summary:hover{color:var(--ink)}
+  details.srv .pop{
+    position:absolute;right:0;top:28px;z-index:5;width:min(300px,80vw);
+    background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;
+    box-shadow:0 8px 24px rgba(60,48,20,.08)
+  }
+  .pop label{display:block;font-size:12px;margin-bottom:6px}
+  .pop input{
+    width:100%;font:inherit;font-size:14px;color:var(--ink);background:var(--bg);
+    border:1px solid var(--line);border-radius:8px;padding:8px 10px
+  }
+  h1{
+    font-size:clamp(34px,6.4vw,58px);font-weight:700;letter-spacing:-.045em;line-height:1.02;
+    margin:clamp(48px,9vw,96px) 0 14px;max-width:11ch
+  }
+  .lede{color:var(--muted);font-size:17px;max-width:46ch;margin-bottom:36px}
+
+  .drop{
+    display:block;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer;
+    background:var(--surface);border:1px solid var(--line);border-radius:18px;
+    padding:clamp(40px,9vw,84px) clamp(22px,5vw,48px);
+    transition:border-color .15s,background .15s
+  }
+  .drop:hover,.drop.over{border-color:var(--ink);background:#fff}
+  .drop b{display:block;font-size:22px;font-weight:600;letter-spacing:-.02em;margin-bottom:6px}
+  .drop span{color:var(--muted);font-size:14px}
+
+  .stage{display:none}
+  body.has-file .stage{display:block}
+  body.has-file .drop{display:none}
+  body.has-file h1,body.has-file .lede{display:none}
+  body.has-file header{padding-bottom:28px}
+
+  .cmp{
+    position:relative;overflow:hidden;line-height:0;border-radius:18px;
+    background:var(--surface);border:1px solid var(--line);
+    --p:50%;
+  }
+  .cmp img{width:100%;max-height:68vh;object-fit:contain;display:block}
+  .cmp .after{position:absolute;inset:0;height:100%;clip-path:inset(0 0 0 var(--p))}
+  .cmp .bar{position:absolute;top:0;bottom:0;left:var(--p);width:2px;margin-left:-1px;background:var(--surface);box-shadow:0 0 0 1px rgba(37,34,28,.15)}
+  .cmp .bar i{
+    position:absolute;top:50%;left:50%;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;
+    background:var(--surface);box-shadow:0 1px 6px rgba(37,34,28,.25)
+  }
+  .cmp .bar i::before,.cmp .bar i::after{
+    content:"";position:absolute;top:13px;width:6px;height:6px;border:solid var(--ink);border-width:2px 0 0 2px
+  }
+  .cmp .bar i::before{left:9px;transform:rotate(-45deg)}
+  .cmp .bar i::after{right:9px;transform:rotate(135deg)}
+  .cmp .tag{
+    position:absolute;top:12px;padding:3px 10px;border-radius:99px;font-size:12px;line-height:1.5;font-weight:500;
+    background:rgba(255,253,248,.88);color:var(--ink)
+  }
+  .cmp .tag.l{left:12px}.cmp .tag.r{right:12px}
+  .cmp input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:ew-resize;margin:0}
+  .cmp input:focus-visible ~ .bar i{outline:2px solid var(--ink);outline-offset:2px}
+  .cmp:not(.done) .after,.cmp:not(.done) .bar,.cmp:not(.done) .tag,.cmp:not(.done) input{display:none}
+  .cmp.busy img{filter:saturate(.8);opacity:.6;transition:opacity .2s}
+
+  .row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:18px}
+  button.btn,a.btn{
+    font:inherit;font-size:15px;font-weight:600;cursor:pointer;text-decoration:none;
+    padding:11px 20px;border-radius:10px;border:1px solid var(--line);
+    background:var(--surface);color:var(--ink);transition:background .15s,border-color .15s
+  }
+  .btn:hover{border-color:var(--ink)}
+  .btn.primary{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+  .btn.primary:hover{background:#3a362d}
+  .btn:disabled{opacity:.5;cursor:default;pointer-events:none}
+  .btn.quiet{background:none;border-color:transparent;color:var(--muted);font-weight:500}
+  .btn.quiet:hover{color:var(--ink);border-color:transparent}
+  .btn[hidden]{display:none}
+  .grow{flex:1}
+  .meta{font-size:13px;color:var(--muted)}
+  .err{margin-top:16px;font-size:14px;color:var(--bad)}
+  .err:empty{display:none}
+  :focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">Deblur</div>
+    <div class="side">
+      <div class="status" id="status" data-s="off" role="status"><i class="dot"></i><span id="statusText">Checking server</span></div>
+      <details class="srv">
+        <summary>Server</summary>
+        <div class="pop">
+          <label for="api">API address</label>
+          <input id="api" type="url" spellcheck="false" placeholder="http://localhost:8000">
+        </div>
+      </details>
+    </div>
+  </header>
+
+  <h1>Sharpen blurry photos.</h1>
+  <p class="lede">Upload a soft or shaky image and a convolutional network restores the detail.</p>
+
+  <button class="drop" id="drop" type="button">
+    <b>Drop a photo here</b>
+    <span>Click to browse or paste from clipboard. PNG, JPG or WebP up to 10 MB.</span>
+  </button>
+  <input id="file" type="file" accept="image/*" hidden>
+
+  <section class="stage" aria-live="polite">
+    <div class="cmp" id="cmp">
+      <img id="before" alt="Original image">
+      <img id="after" class="after" alt="Deblurred image">
+      <span class="tag l">Before</span><span class="tag r">After</span>
+      <input id="rng" type="range" min="0" max="100" value="50" aria-label="Compare before and after">
+      <div class="bar"><i></i></div>
+    </div>
+    <div class="row">
+      <button class="btn primary" id="go" type="button">Deblur</button>
+      <a class="btn" id="dl" hidden>Download</a>
+      <span class="meta" id="meta"></span>
+      <span class="grow"></span>
+      <button class="btn quiet" id="blurIt" type="button" title="Blur this image first to test the model">Add test blur</button>
+      <button class="btn quiet" id="again" type="button">Choose another</button>
+    </div>
+    <p class="err" id="err" role="alert"></p>
+  </section>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d){ try { return localStorage.getItem(k) || d } catch { return d } },
+  set(k, v){ try { localStorage.setItem(k, v) } catch {} }
+};
+let api = store.get("deblur_api", "http://localhost:8000").replace(/\/+$/, "");
+let file = null, beforeUrl = null, afterUrl = null, busy = false;
+$("api").value = api;
+
+/* ---------- server status ---------- */
+async function health(){
+  const s = $("status"), t = $("statusText");
+  try{
+    const r = await fetch(api + "/health"); const j = await r.json();
+    if (j.model_loaded){ s.dataset.s = "ok"; t.textContent = "Model ready on " + j.device }
+    else { s.dataset.s = "warn"; t.textContent = "Model not trained yet" }
+  }catch{ s.dataset.s = "off"; t.textContent = "Server offline" }
+}
+$("api").addEventListener("change", e => {
+  api = e.target.value.trim().replace(/\/+$/, "") || "http://localhost:8000";
+  store.set("deblur_api", api); health();
+});
+health(); setInterval(health, 8000);
+
+/* ---------- file handling ---------- */
+function setFile(f){
+  if (!f || !f.type.startsWith("image/")) return showErr("That file isn't an image. Choose a PNG, JPG or WebP.");
+  if (f.size > 10 * 1024 * 1024) return showErr("That image is over 10 MB. Choose a smaller one.");
+  file = f; showErr("");
+  if (beforeUrl) URL.revokeObjectURL(beforeUrl);
+  beforeUrl = URL.createObjectURL(f); $("before").src = beforeUrl;
+  resetResult();
+  document.body.classList.add("has-file");
+}
+function resetResult(){
+  if (afterUrl) URL.revokeObjectURL(afterUrl);
+  afterUrl = null;
+  $("cmp").classList.remove("done"); $("dl").hidden = true; $("meta").textContent = "";
+  $("go").textContent = "Deblur";
+}
+function showErr(m){ $("err").textContent = m }
+
+const drop = $("drop");
+drop.onclick = () => $("file").click();
+$("again").onclick = () => $("file").click();
+$("file").onchange = e => { setFile(e.target.files[0]); e.target.value = "" };
+["dragenter","dragover"].forEach(ev => window.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over") }));
+["dragleave","drop"].forEach(ev => window.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over") }));
+window.addEventListener("drop", e => setFile(e.dataTransfer.files[0]));
+window.addEventListener("paste", e => { const f = e.clipboardData && e.clipboardData.files[0]; if (f) setFile(f) });
+
+/* ---------- api calls ---------- */
+async function call(path, f){
+  const fd = new FormData(); fd.append("file", f);
+  let r;
+  try { r = await fetch(api + path, { method: "POST", body: fd }) }
+  catch { throw new Error("Can't reach the server at " + api + ". Start it with: python backend.py serve") }
+  if (!r.ok){
+    let d = ""; try { d = (await r.json()).detail } catch {}
+    throw new Error(d || "The server returned an error (" + r.status + ").");
+  }
+  return r;
+}
+function setBusy(b, label){
+  busy = b; $("cmp").classList.toggle("busy", b);
+  ["go","blurIt","again"].forEach(i => $(i).disabled = b);
+  if (label) $("go").textContent = label;
+}
+
+$("go").onclick = async () => {
+  if (!file || busy) return;
+  showErr(""); setBusy(true, "Deblurring...");
+  try{
+    const r = await call("/deblur?output_format=png", file);
+    const blob = await r.blob();
+    if (afterUrl) URL.revokeObjectURL(afterUrl);
+    afterUrl = URL.createObjectURL(blob);
+    $("after").src = afterUrl;
+    await $("after").decode().catch(() => {});
+    $("rng").value = 50; $("cmp").style.setProperty("--p", "50%");
+    $("cmp").classList.add("done");
+    const dl = $("dl"); dl.href = afterUrl;
+    dl.download = file.name.replace(/\.[^.]+$/, "") + "-deblurred.png"; dl.hidden = false;
+    const ms = r.headers.get("X-Process-Time-Ms"), sz = r.headers.get("X-Image-Size");
+    $("meta").textContent = [sz, ms && ms + " ms"].filter(Boolean).join("  ");
+    setBusy(false, "Deblur again");
+  }catch(e){ showErr(e.message); setBusy(false, "Deblur") }
+};
+
+$("blurIt").onclick = async () => {
+  if (!file || busy) return;
+  showErr(""); setBusy(true);
+  try{
+    const r = await call("/blur-demo?kind=gaussian&strength=2", file);
+    const blob = await r.blob();
+    setFile(new File([blob], file.name.replace(/\.[^.]+$/, "") + "-blurred.png", { type: blob.type }));
+  }catch(e){ showErr(e.message) }
+  setBusy(false, "Deblur");
+};
+
+/* ---------- compare slider ---------- */
+$("rng").addEventListener("input", e => $("cmp").style.setProperty("--p", e.target.value + "%"));
+</script>
+</body>
+</html>
